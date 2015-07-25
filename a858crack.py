@@ -150,11 +150,11 @@ if __name__ == "__main__":
     args.blocksize = int(args.blocksize)
 
     if args.unicode and args.max == 1e+16:
-        args.max = 20494173395672605997800089770768881156096
+        args.max = 109384**(args.blocksize - 1)
     if args.binary and args.max == 1e+16:
         args.max = 255**(args.blocksize - 1)
     elif args.max == 1e+16:
-        args.max = 100**args.blocksize
+        args.max = 100**(args.blocksize -1)
 
     crack(float(args.max), args.hashtype, args.hash[0], output_file=fobj,
           interval=args.interval, blocksize=int(args.blocksize), unicode=args.unicode, binary=args.binary)
