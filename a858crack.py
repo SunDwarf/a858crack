@@ -42,25 +42,39 @@ results = Array(ctypes.c_char_p, 100) # 100 hash results should be enough
 
 curr_offset = Value("i", 0)
 
-def __crack_hashes(input_hash: str, hashtype: str, blocksize: int):
+def __crack_hashes(input_hash: str, hashtype: str, blocksize: int, unicode=False, binary=False):
     print("Running bruteforce crack on hash {} of type {} with {} character maximum blocksize...".format(input_hash, hashtype, blocksize))
+
+    if unicode:
+        chars = "".join([chr(x) for x in range(0, 109384)])
+    elif binary:
+        chars = "".join([chr(x) for x in range(0, 255)])
+    else:
+        chars = string.printable
+
     for block_size in range(0, blocksize):
-        blocks = (''.join(i) for i in itertools.product(string.printable, repeat=int(block_size)))
+        blocks = (''.join(i) for i in itertools.product(chars, repeat=int(block_size)))
         # Begin hashing.
         for block in blocks:
             h = hashlib.new(hashtype)
-            h.update(block.encode())
+            try:
+                h.update(block.encode())
+            except UnicodeEncodeError:
+                # Invalid unicode.
+                continue
             if h.hexdigest() == input_hash:
                 # Match!
+                print("Collision found at hash {}".format(curr_hashes.value))
                 results[curr_offset] = str(curr_hashes.value) + ":" + hashtype + ":" + block
                 curr_offset.value += 1
             curr_hashes.value += 1
 
 
-def crack(maxhash, hashtype, input_hash, output_file=sys.stdout, interval=1, blocksize=8):
+def crack(maxhash, hashtype, input_hash, output_file=sys.stdout, interval=1, blocksize=8,
+          unicode=False, binary=False):
     start_time = time.time()
     max_hashes.value = maxhash
-    p = Process(target=__crack_hashes, args=(input_hash, hashtype, blocksize))
+    p = Process(target=__crack_hashes, args=(input_hash, hashtype, blocksize, unicode, binary))
     p.start()
     while True:
         curr_time = time.time()
@@ -78,7 +92,7 @@ def crack(maxhash, hashtype, input_hash, output_file=sys.stdout, interval=1, blo
             print("Completed bruteforcing. {} results.".format(curr_offset.value), file=output_file)
             print("Hashed {h} hashes out of {m} in {s} seconds."
                   .format(h=curr_hashes.value, m=max_hashes.value, s=elapsed), file=output_file)
-            print("Maximum blocksize 8, hashing scheme {s}".format(s=hashtype), file=output_file)
+            print("Maximum blocksize {bs}, hashing scheme {s}".format(s=hashtype, bs=blocksize), file=output_file)
             print("Average hashes per second of {}".format(hps), file=output_file)
             for value in results:
                 if value is not None: print("Collision detected: {}".format(value))
@@ -121,6 +135,10 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--interval", help="The difference in seconds to print out current status.", default=1, nargs="?")
     parser.add_argument("-m", "--max", help="The maximum number of hashes to perform. Do not change this without good reason.", nargs="?", default=1e+16)
     parser.add_argument("-b", "--blocksize", help="The number of blocks to calculate. By default, this is 8.", nargs="?", default=8)
+    parser.add_argument("-u", "--unicode", help="Test unicode hashes. WARNING: This will probably take longer than the lifespan of the universe to complete on a CPU.",
+                        action="store_true", default=False)
+    parser.add_argument("--binary", help="Test binary hashes in ranges 0-255. This is overriden by the --unicode option.",
+                        action="store_true", default=False)
 
     args = parser.parse_args()
 
@@ -129,4 +147,14 @@ if __name__ == "__main__":
     else:
         fobj = sys.stdout
 
-    crack(float(args.max), args.hashtype, args.hash[0], output_file=fobj, interval=args.interval, blocksize=int(args.blocksize))
+    args.blocksize = int(args.blocksize)
+
+    if args.unicode and args.max == 1e+16:
+        args.max = 20494173395672605997800089770768881156096
+    if args.binary and args.max == 1e+16:
+        args.max = 255**(args.blocksize - 1)
+    elif args.max == 1e+16:
+        args.max = 100**args.blocksize
+
+    crack(float(args.max), args.hashtype, args.hash[0], output_file=fobj,
+          interval=args.interval, blocksize=int(args.blocksize), unicode=args.unicode, binary=args.binary)
